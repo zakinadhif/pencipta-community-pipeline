@@ -67,7 +67,7 @@ def finish_agent_run(database_url: str, run_id: str, succeeded: bool) -> None:
     with connection(database_url) as conn:
         conn.execute("UPDATE agent_runs SET status = %s, completed_at = now(), error = %s WHERE id = %s", (status, error, run_id))
 
-def record_tool_call(database_url: str, agent_run_id: str, tool_name: str, arguments: str) -> None:
+def record_tool_call(database_url: str, agent_run_id: str, tool_name: str, arguments: str, tool_call_id: str | None) -> None:
     """Record non-secret local-tool metadata for later run inspection."""
     try:
         parsed_arguments = json.loads(arguments)
@@ -75,6 +75,16 @@ def record_tool_call(database_url: str, agent_run_id: str, tool_name: str, argum
         parsed_arguments = {}
     with connection(database_url) as conn:
         conn.execute(
-            "INSERT INTO tool_calls (id, agent_run_id, tool_name, arguments, status) VALUES (%s, %s, %s, %s::jsonb, 'called')",
-            (str(uuid.uuid4()), agent_run_id, tool_name, json.dumps(parsed_arguments)),
+            "INSERT INTO tool_calls (id, agent_run_id, tool_name, arguments, tool_call_id, status) VALUES (%s, %s, %s, %s::jsonb, %s, 'called')",
+            (str(uuid.uuid4()), agent_run_id, tool_name, json.dumps(parsed_arguments), tool_call_id),
+        )
+
+def record_tool_result(database_url: str, agent_run_id: str, tool_call_id: str | None, result: str) -> None:
+    """Save a tool's output once the Agents SDK reports that the call completed."""
+    if not tool_call_id:
+        return
+    with connection(database_url) as conn:
+        conn.execute(
+            "UPDATE tool_calls SET result = %s, status = 'completed' WHERE agent_run_id = %s AND tool_call_id = %s",
+            (result, agent_run_id, tool_call_id),
         )

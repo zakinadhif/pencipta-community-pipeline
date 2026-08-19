@@ -54,7 +54,10 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     agent_run_id UUID NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
     tool_name TEXT NOT NULL,
     arguments JSONB NOT NULL DEFAULT '{}'::jsonb,
+    tool_call_id TEXT,
     result TEXT,
     status TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE tool_calls ADD COLUMN IF NOT EXISTS tool_call_id TEXT;
+CREATE INDEX IF NOT EXISTS tool_calls_agent_run_call_id_idx ON tool_calls (agent_run_id, tool_call_id);

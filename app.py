@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import streamlit as st
 from agent.agent import AgentConfigurationError, run_agent_stream
 from components.sidebar import render_sidebar
-from db.client import DatabaseError, conversation_belongs_to_session, create_conversation, ensure_session, finish_agent_run, get_messages, init_database, list_conversations, record_tool_call, start_agent_run, store_message
+from db.client import DatabaseError, conversation_belongs_to_session, create_conversation, ensure_session, finish_agent_run, get_messages, init_database, list_conversations, record_tool_call, record_tool_result, start_agent_run, store_message
 
 MAX_MESSAGE_CHARS = 4_000
 MAX_REQUESTS_PER_MINUTE = 10
@@ -125,14 +125,18 @@ def main() -> None:
             answer_parts.append(delta); output.markdown("".join(answer_parts) + "▌")
         def on_activity(message: str) -> None:
             if activity: activity.write(message)
-        def on_tool_call(tool_name: str, arguments: str) -> None:
+        def on_tool_call(tool_name: str, arguments: str, tool_call_id: str | None) -> None:
             if run_id:
-                try: record_tool_call(database_url, run_id, tool_name, arguments)
+                try: record_tool_call(database_url, run_id, tool_name, arguments, tool_call_id)
+                except DatabaseError: pass
+        def on_tool_result(tool_call_id: str | None, result: str) -> None:
+            if run_id:
+                try: record_tool_result(database_url, run_id, tool_call_id, result)
                 except DatabaseError: pass
         run_id = None
         try:
             run_id = start_agent_run(database_url, st.session_state.conversation_id, model)
-            answer = run_agent_stream(secret("OPENAI_API_KEY") or "", model, messages + [{"role": "user", "content": prompt}], on_delta, on_activity, on_tool_call)
+            answer = run_agent_stream(secret("OPENAI_API_KEY") or "", model, messages + [{"role": "user", "content": prompt}], on_delta, on_activity, on_tool_call, on_tool_result)
             output.markdown(answer)
             if activity: activity.update(label="Finished", state="complete")
             store_message(database_url, st.session_state.conversation_id, "assistant", answer)
